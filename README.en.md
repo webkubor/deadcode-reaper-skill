@@ -1,17 +1,17 @@
-<h1 align="center">🪦 tombstone-reaper-skill</h1>
+<h1 align="center">🪦 deadcode-reaper-skill</h1>
 
 <p align="center">
   <strong>Actually bury dead code and tombstoned skills, brag about your subtraction scoreboard, end context-pollution in the AI era.</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/webkubor/tombstone-reaper-skill/blob/main/LICENSE"><img src="https://img.shields.io/github/license/webkubor/tombstone-reaper-skill?style=for-the-badge" alt="License"></a>
-  <a href="https://github.com/webkubor/tombstone-reaper-skill/releases"><img src="https://img.shields.io/github/v/release/webkubor/tombstone-reaper-skill?style=for-the-badge" alt="Release"></a>
-  <a href="https://github.com/webkubor/tombstone-reaper-skill"><img src="https://img.shields.io/badge/Philosophy-Subtractive%20First-orange?style=for-the-badge" alt="Philosophy"></a>
+  <a href="https://github.com/webkubor/deadcode-reaper-skill/blob/main/LICENSE"><img src="https://img.shields.io/github/license/webkubor/deadcode-reaper-skill?style=for-the-badge" alt="License"></a>
+  <a href="https://github.com/webkubor/deadcode-reaper-skill/releases"><img src="https://img.shields.io/github/v/release/webkubor/deadcode-reaper-skill?style=for-the-badge" alt="Release"></a>
+  <a href="https://github.com/webkubor/deadcode-reaper-skill"><img src="https://img.shields.io/badge/Philosophy-Subtractive%20First-orange?style=for-the-badge" alt="Philosophy"></a>
 </p>
 
 <p align="center">
-  This repo is an installable Agent Skill, skill name <code>tombstone-reaper-skill</code>: it finds and clears self-declared-dead skills, AI residue, dead code and temp junk, then reports the tokens and disk it freed.<br>
+  This repo is an installable Agent Skill, skill name <code>deadcode-reaper-skill</code>: it finds and clears self-declared-dead skills, AI residue, dead code and temp junk, then reports the tokens and disk it freed.<br>
   Install and trigger words: <a href="#-hook-as-an-ai-agent-skill">🤖 Hook as an AI Agent skill</a>; script-only usage: <a href="#-30-second-quickstart">⚡ 30-second quickstart</a>.
 </p>
 
@@ -25,7 +25,7 @@
 
 In classic development, dead code is just "ugly to look at"; but in the **AI agent / LLM era**, tombstoned code directly burns money (tokens), produces hallucinations, and stuffs deprecated logic into context.
 
-| Today & classic practice | Typical consequence | 🪦 tombstone-reaper-skill solution |
+| Today & classic practice | Typical consequence | 🪦 deadcode-reaper-skill solution |
 |---|---|---|
 | **Tombstone**: mark dead code/skills with `// deprecated` or `【已停用】` and leave the file | Scanners, RAG, and agent retrieval still push it into context — hallucinations and wasted tokens | **Bury**: one-shot identification of self-declared dead things, safe archive or physical removal |
 | **AI Ghost Artifacts**: scratch scripts, `*.rej` patches, temp test files left by agents | Pollutes subsequent agent searches, causing hallucination loops and wasted context | **AI Ghost Reaper**: pinpoint and permanently smash agent residue and temporary scaffolds |

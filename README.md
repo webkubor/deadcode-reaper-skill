@@ -1,17 +1,17 @@
-<h1 align="center">🪦 tombstone-reaper-skill</h1>
+<h1 align="center">🪦 deadcode-reaper-skill</h1>
 
 <p align="center">
   <strong>让死代码与墓碑技能真正入土为安，晒出你的减法战绩，终结 AI 时代的上下文污染。</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/webkubor/tombstone-reaper-skill/blob/main/LICENSE"><img src="https://img.shields.io/github/license/webkubor/tombstone-reaper-skill?style=for-the-badge" alt="License"></a>
-  <a href="https://github.com/webkubor/tombstone-reaper-skill/releases"><img src="https://img.shields.io/github/v/release/webkubor/tombstone-reaper-skill?style=for-the-badge" alt="Release"></a>
-  <a href="https://github.com/webkubor/tombstone-reaper-skill"><img src="https://img.shields.io/badge/Philosophy-Subtractive%20First-orange?style=for-the-badge" alt="Philosophy"></a>
+  <a href="https://github.com/webkubor/deadcode-reaper-skill/blob/main/LICENSE"><img src="https://img.shields.io/github/license/webkubor/deadcode-reaper-skill?style=for-the-badge" alt="License"></a>
+  <a href="https://github.com/webkubor/deadcode-reaper-skill/releases"><img src="https://img.shields.io/github/v/release/webkubor/deadcode-reaper-skill?style=for-the-badge" alt="Release"></a>
+  <a href="https://github.com/webkubor/deadcode-reaper-skill"><img src="https://img.shields.io/badge/Philosophy-Subtractive%20First-orange?style=for-the-badge" alt="Philosophy"></a>
 </p>
 
 <p align="center">
-  这是一个可直接安装的 Agent Skill，skill 名 <code>tombstone-reaper-skill</code>：扫出并清除代码库里「自称已废」的墓碑技能、AI 残留碎片、死代码与临时垃圾，并统计释放的 Token 与磁盘。<br>
+  这是一个可直接安装的 Agent Skill，skill 名 <code>deadcode-reaper-skill</code>：扫出并清除代码库里「自称已废」的墓碑技能、AI 残留碎片、死代码与临时垃圾，并统计释放的 Token 与磁盘。<br>
   安装与唤醒词见 <a href="#-作为-ai-agent-技能接入">🤖 作为 AI Agent 技能接入</a>；只跑脚本看 <a href="#-30-秒快速上手-quickstart">⚡ 30 秒快速上手</a>。
 </p>
 
@@ -25,7 +25,7 @@
 
 在传统开发中，死代码只是"看着难受"；而在 **AI Agent / LLM 时代，立了墓碑的死代码会直接烧钱（消耗 Token）、产生幻觉、并把废弃逻辑塞满上下文**。
 
-| 现状与传统做法 | 典型后果 | 🪦 tombstone-reaper-skill 方案 |
+| 现状与传统做法 | 典型后果 | 🪦 deadcode-reaper-skill 方案 |
 |---|---|---|
 | **立墓碑 (Tombstone)**：把废弃代码/技能加上注释 `// deprecated` 或 `【已停用】` 但留着文件 | 扫描器、RAG、Agent 检索依然把它塞进上下文，产生幻觉并浪费 Token | **入土安葬 (Bury)**：一键识别自称已废的死物，安全归档或物理移除 |
 | **AI 幽灵残留**：Agent 调试留下的 `*.rej`、`scratch/` 脚本、临时 prompt 文件 | 再次被 Agent 检索扫描，引发多轮幻觉并污染上下文 | **AI 碎片清道夫**：精准定位并物理粉碎所有 AI 遗留脚手架 |
