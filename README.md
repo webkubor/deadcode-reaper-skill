@@ -11,6 +11,11 @@
 </p>
 
 <p align="center">
+  这是一个可直接安装的 Agent Skill，skill 名 <code>tombstone-reaper-skill</code>：扫出并清除代码库里「自称已废」的墓碑技能、AI 残留碎片、死代码与临时垃圾，并统计释放的 Token 与磁盘。<br>
+  安装与唤醒词见 <a href="#-作为-ai-agent-技能接入">🤖 作为 AI Agent 技能接入</a>；只跑脚本看 <a href="#-30-秒快速上手-quickstart">⚡ 30 秒快速上手</a>。
+</p>
+
+<p align="center">
   <img src="https://cdn.jsdelivr.net/gh/webkubor/picx-images-hosting@master/tombstone-reaper/burial-certificate.png/%E6%88%AA%E5%B1%8F2026-09-19%2012.13.08.png" alt="Tombstone Reaper Cyberpunk Terminal UI" width="680" style="border-radius: 8px; box-shadow: 0 4px 20px rgba(0,255,170,0.15);">
 </p>
 
