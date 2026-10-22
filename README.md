@@ -1,13 +1,20 @@
 <h1 align="center">🪦 deadcode-reaper-skill</h1>
 
+
+<p align="center">
+  <a href="https://github.com/webkubor/deadcode-reaper-skill"><img src="https://img.shields.io/badge/Philosophy-Subtractive%20First-orange?style=for-the-badge" alt="理念"></a>
+  <a href="https://github.com/webkubor/deadcode-reaper-skill/releases"><img src="https://img.shields.io/github/v/release/webkubor/deadcode-reaper-skill?style=for-the-badge&color=coral" alt="版本"></a>
+  <a href="https://github.com/webkubor/deadcode-reaper-skill/releases/latest"><img src="https://img.shields.io/github/downloads/webkubor/deadcode-reaper-skill/total?style=for-the-badge&color=orange" alt="下载"></a>
+  <a href="https://github.com/webkubor/deadcode-reaper-skill/blob/main/LICENSE"><img src="https://img.shields.io/github/license/webkubor/deadcode-reaper-skill?style=for-the-badge&color=gold" alt="License"></a>
+  <a href="https://github.com/webkubor/deadcode-reaper-skill"><img src="https://img.shields.io/github/stars/webkubor/deadcode-reaper-skill?style=for-the-badge&color=coral" alt="Stars"></a>
+  <a href="https://github.com/webkubor/deadcode-reaper-skill"><img src="https://img.shields.io/badge/Shell-333333?style=for-the-badge" alt="技术栈"></a>
+</p>
+
 <p align="center">
   <strong>让死代码与墓碑技能真正入土为安，晒出你的减法战绩，终结 AI 时代的上下文污染。</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/webkubor/deadcode-reaper-skill/blob/main/LICENSE"><img src="https://img.shields.io/github/license/webkubor/deadcode-reaper-skill?style=for-the-badge" alt="License"></a>
-  <a href="https://github.com/webkubor/deadcode-reaper-skill/releases"><img src="https://img.shields.io/github/v/release/webkubor/deadcode-reaper-skill?style=for-the-badge" alt="Release"></a>
-  <a href="https://github.com/webkubor/deadcode-reaper-skill"><img src="https://img.shields.io/badge/Philosophy-Subtractive%20First-orange?style=for-the-badge" alt="Philosophy"></a>
 </p>
 
 <p align="center">
