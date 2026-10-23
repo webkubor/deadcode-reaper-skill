@@ -2,6 +2,24 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [1.2.0] - 2026-10-23
+
+### 新特性 (Features)
+
+- **🧟 会话过程资产收割 (`--sessions`)**：任务结束后无人认领的过程资产有了统一判据 ——
+  - **已并入的本地分支**：`git merge-base --is-ancestor` 相对当前 HEAD 判定，排除 main/master/develop/trunk 与当前分支，**排除被 worktree 占用的分支**（被占分支 `-d` 必失败，教训来自 GHAM 清理：17 个 worktree 占死 15 条已并入分支）；
+  - **远端已并入分支**：相对 origin/main 同理判定，需 `--apply --remote` 才删；
+  - **/tmp 项目遗留**：`<项目名>-*` / `<项目名>_*` 且 mtime 超过 `REAP_SESS_STALE_DAYS`（默认 7 天）且**不在最近 1 小时内**（双保险）且无活跃进程占用（`lsof +D`，保护并行会话）；macOS `/tmp` 与 `/private/tmp` 以设备号+inode 去重；
+  - **stash**：默认只报告，`--apply --stash` 才 drop（stash 常藏未收编工作）；
+  - **Agent 浏览器 TaskSpace**：委托 `cs browser gc`（装了 cs 才生效）。
+- 功德账本新增 `total_branches` / `total_tmp_items` / `total_worktrees` 三个维度，`--stats` 战报可见「🧟 累计收割会话遗留」。
+
+### 背景
+
+owner 2026-10-23 在 GHAM 仓库大清理（18 分支 + 17 worktree + /tmp 诊断脚本 + 浏览器窗口）后提问：
+「为啥不把这些测试的遗留、分支、worktree、浏览器测试完的窗口统一放入 GC？」
+—— 门禁只管代码，没有人管过程资产。本版本把过程资产 GC 做进收割判据。
+
 ## [1.1.0] - 2026-09-19
 
 ### 新特性 (Features)

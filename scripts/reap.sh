@@ -13,6 +13,10 @@ MODE="dry-run"
 SHARE_MODE=0
 ENABLE_CACHE=0
 ENABLE_SYSTEM_CACHE=0
+ENABLE_SESSIONS=0
+ENABLE_REMOTE=0
+ENABLE_STASH=0
+SESS_STALE_DAYS="${REAP_SESS_STALE_DAYS:-7}"
 
 usage() {
   cat <<EOF
@@ -21,10 +25,13 @@ usage() {
 选项:
   --check | --dry-run   只读检查，不动文件（默认）
   --apply | --bury      执行安全入土清理
+  --sessions            收割「会话过程资产」：已并入分支、/tmp 项目遗留、过期 stash、Agent 浏览器窗口
+  --remote              配合 --sessions --apply：连远端同名已并入分支一并删除（需推送权限）
+  --stash               配合 --sessions --apply：连 stash 一起 drop（默认只报告不删）
   --share               只打功德战报与晒单卡片，跳过逐项清单
   --cache               扫描并清理项目内的临时构建缓存（__pycache__, .turbo, .next 等）
   --system-cache        清理开发者系统全局依赖纯缓存（npm, pip, go, brew, updater）
-  --deep | --all        全量减法模式（含墓碑、AI 碎片、项目缓存与系统缓存）
+  --deep | --all        全量减法模式（含墓碑、AI 碎片、项目缓存、系统缓存与会话过程资产）
   --stats | --ledger    查看累计功德账本（~/.tombstone-ledger.json）
   -h | --help           显示本帮助
 
@@ -34,6 +41,8 @@ usage() {
   🗑️  幽灵垃圾   *.bak / *.bak2 / *.update.lock / *~ / *.tmp / *.orig / .DS_Store
   📄  草稿碎片   < 100 字节且无 frontmatter 的散落 .md
   🌳  孤立工作树 仅 --apply：HEAD 干净且非主工作树，安全 prune
+  🧟  会话遗留   仅 --sessions：已并入 main 的分支、/tmp 下本项目遗留（>7天且无进程占用）、
+                 过期 stash（默认只报告）、Agent 浏览器任务空间（cs browser gc）
   ⚡  构建缓存   项目级构建产物与系统级包管理器纯缓存（需 --cache / --system-cache）
 EOF
 }
@@ -45,9 +54,13 @@ for arg in "$@"; do
     --share) SHARE_MODE=1 ;;
     --cache) ENABLE_CACHE=1 ;;
     --system-cache) ENABLE_SYSTEM_CACHE=1 ;;
+    --sessions) ENABLE_SESSIONS=1 ;;
+    --remote) ENABLE_REMOTE=1 ;;
+    --stash) ENABLE_STASH=1 ;;
     --deep|--all)
       ENABLE_CACHE=1
       ENABLE_SYSTEM_CACHE=1
+      ENABLE_SESSIONS=1
       ;;
     --stats|--ledger)
       LEDGER="$HOME/.tombstone-ledger.json"
@@ -71,6 +84,9 @@ print(f'  🗑️  累计粉碎幽灵垃圾: {d.get("total_garbage", 0)} 个')
 cache_b = d.get("total_cache_bytes", 0)
 if cache_b > 0:
     print(f'  ⚡ 累计蒸发依赖缓存: {fmt_b(cache_b)}')
+sess = d.get("total_branches", 0) + d.get("total_tmp_items", 0) + d.get("total_worktrees", 0)
+if sess > 0:
+    print(f'  🧟 累计收割会话遗留: {sess} 项（分支/临时目录/worktree）')
 print(f'  🧠 累计释放上下文: ~{d.get("total_tokens", 0):,} Tokens')
 print('--------------------------------------------------')
 print(f'最近一次入土: {d.get("last_project", "无")} ({d.get("last_burial_time", "无")})')
@@ -155,6 +171,9 @@ render_cyberpunk_card() {
   CARD_DRAFTS="$freed_drafts_count" \
   CARD_GARBAGE="$freed_garbage_count" \
   CARD_WORKTREES="${#wt_reap_targets[@]}" \
+  CARD_BRANCHES="$freed_branches_count" \
+  CARD_TMP_ITEMS="$freed_tmp_count" \
+  CARD_ENABLE_SESSIONS="$ENABLE_SESSIONS" \
   CARD_ENABLE_CACHE="$ENABLE_CACHE" \
   CARD_CACHE_B="$freed_cache_bytes" \
   CARD_ENABLE_SYS_CACHE="$ENABLE_SYSTEM_CACHE" \
@@ -170,6 +189,9 @@ ai = int(os.environ.get("CARD_AI", "0"))
 drafts = int(os.environ.get("CARD_DRAFTS", "0"))
 garbage = int(os.environ.get("CARD_GARBAGE", "0"))
 worktrees = int(os.environ.get("CARD_WORKTREES", "0"))
+branches = int(os.environ.get("CARD_BRANCHES", "0"))
+tmp_items = int(os.environ.get("CARD_TMP_ITEMS", "0"))
+enable_sessions = os.environ.get("CARD_ENABLE_SESSIONS", "0") == "1"
 enable_cache = os.environ.get("CARD_ENABLE_CACHE", "0") == "1"
 cache_b = int(os.environ.get("CARD_CACHE_B", "0"))
 enable_sys_cache = os.environ.get("CARD_ENABLE_SYS_CACHE", "0") == "1"
@@ -237,6 +259,9 @@ if enable_cache:
     rows.append(f"  ⚡  清除项目缓存  {c_border}│{c_reset}  " + (f"{c_neon}+{fmt_size(cache_b)}{c_reset}        {c_dim}[构建产物蒸发]{c_reset}" if cache_b > 0 else f"{c_dim} 0 B{c_reset}        {c_dim}[构建干净]{c_reset}"))
 if enable_sys_cache:
     rows.append(f"  🧹  系统依赖纯缓  {c_border}│{c_reset}  " + (f"{c_neon}+{fmt_size(sys_cache_b)}{c_reset}        {c_dim}[全局依赖清爽]{c_reset}" if sys_cache_b > 0 else f"{c_dim} 0 B{c_reset}        {c_dim}[无冗余包]{c_reset}"))
+if enable_sessions:
+    sess_total = branches + tmp_items
+    rows.append(f"  🧟  会话遗留收割  {c_border}│{c_reset}  " + (f"{c_neon}+{sess_total} 项{c_reset}        {c_dim}[分支/临时目录清零]{c_reset}" if sess_total > 0 else f"{c_dim} 0 项{c_reset}        {c_dim}[无会话遗留]{c_reset}"))
 
 for r in rows:
     print(f"{c_border}│{c_reset} " + pad_row(r, w) + f" {c_border}│{c_reset}")
@@ -411,16 +436,21 @@ if [ "$ENABLE_SYSTEM_CACHE" -eq 1 ]; then
   done
 fi
 
+branch_reap_targets=()
+branch_skip_targets=()
+rbranch_reap_targets=()
+tmp_reap_targets=()
+stash_report_items=()
+browser_gc_count=0
 freed_skills_count=${#tombstones[@]}
 freed_ai_count=${#ai_artifacts[@]}
 freed_garbage_count=${#garbage_files[@]}
 freed_drafts_count=${#empty_drafts[@]}
 freed_caches_count=${#project_caches[@]}
-total_items=$((freed_skills_count + freed_ai_count + freed_garbage_count + freed_drafts_count + freed_caches_count))
 
 # 预估 Token 释放量：仅针对文本类死物计算（1 Token ≈ 3.5 字节）
 est_tokens=$(awk "BEGIN { printf \"%d\", $total_freed_bytes / 3.5 }")
-[ -z "$est_tokens" ] && est_tokens=0
+if [ -z "$est_tokens" ]; then est_tokens=0; fi
 
 # 总计缩减磁盘容量（文本类 + 缓存类）
 grand_total_bytes=$((total_freed_bytes + freed_cache_bytes + system_cache_freed_bytes))
@@ -443,6 +473,97 @@ if [ -d .git ] || [ -f .git ]; then
     fi
   done < <(git worktree list 2>/dev/null || true)
 fi
+
+# ===== 会话过程资产收割（仅 --sessions）=====
+# 教训来源（2026-10-23 GHAM 清理）：17 个残留 worktree 占着 15 条已并入分支删不掉、
+# /tmp 诊断脚本无判据、Agent 浏览器窗口任务结束没人关 —— 门禁只管代码，没人管过程资产。
+if [ "$ENABLE_SESSIONS" -eq 1 ]; then
+  # ① 已并入的本地分支（is-ancestor + 非 main/master/develop + 不被任何 worktree 占用）
+  if git rev-parse --git-dir >/dev/null 2>&1; then
+    # worktree 占用的分支集合（教训：git branch -d 对被占用分支会失败）
+    occupied_branches="$(git worktree list --porcelain 2>/dev/null | awk '/^branch /{print $2}')"
+    protected_re='^(main|master|develop|trunk)$'
+    current_branch="$(git branch --show-current 2>/dev/null)"
+    while IFS= read -r b; do
+      [ -z "$b" ] && continue
+      [ "$b" = "$current_branch" ] && continue
+      echo "$b" | grep -qE "$protected_re" && continue
+      echo "$occupied_branches" | grep -qxF "$b" && { branch_skip_targets+=("$b (被 worktree 占用，先清 worktree)"); continue; }
+      # 已并入判据：相对当前 HEAD（=主工作树检出）
+      if git merge-base --is-ancestor "$b" HEAD 2>/dev/null; then
+        branch_reap_targets+=("$b")
+      else
+        branch_skip_targets+=("$b (有未合并提交)")
+      fi
+    done < <(git branch --format='%(refname:short)' 2>/dev/null)
+    # 远端已并入分支（仅报告；--apply --remote 才删）
+    if [ "$ENABLE_REMOTE" -eq 1 ]; then
+      upstream="$(git rev-parse --verify origin/main >/dev/null 2>&1 && echo origin/main || echo '')"
+      [ -z "$upstream" ] && upstream="$(git rev-parse --verify origin/master >/dev/null 2>&1 && echo origin/master || echo '')"
+      if [ -n "$upstream" ]; then
+        while IFS= read -r rb; do
+          [ -z "$rb" ] && continue
+          echo "$rb" | grep -qE '/(HEAD|main|master|develop|trunk)$' && continue
+          if git merge-base --is-ancestor "$rb" "$upstream" 2>/dev/null; then
+            rbranch_reap_targets+=("$rb")
+          fi
+        done < <(git branch -r --format='%(refname:short)' 2>/dev/null)
+      fi
+    fi
+    # ④ stash：永远只报告（常藏未收编工作），--apply --stash 才 drop
+    while IFS= read -r st; do
+      [ -z "$st" ] && continue
+      stash_report_items+=("$st")
+    done < <(git stash list --format='%gd: %s' 2>/dev/null)
+  fi
+
+  # ② /tmp 下本项目遗留（<项目名>-* 且 mtime 超 SESS_STALE_DAYS 天且无活跃进程占用）
+  proj="$(basename "$ROOT_PWD")"
+  stale_epoch=$(( $(date +%s) - SESS_STALE_DAYS * 86400 ))
+  recent_cutoff=$(( $(date +%s) - 3600 ))  # 双保险：1 小时内的新条目一律不碰
+  for tdir in "${TMPDIR:-/tmp}" /tmp /private/tmp; do
+    [ -d "$tdir" ] || continue
+    for cand in "$tdir/${proj}"-* "$tdir/${proj}_"*; do
+      [ -e "$cand" ] || continue
+      mtime=$(stat -f %m "$cand" 2>/dev/null || stat -c %Y "$cand" 2>/dev/null) || continue
+      [ "$mtime" -lt "$stale_epoch" ] || continue
+      [ "$mtime" -gt "$recent_cutoff" ] && continue
+      # 活跃进程占用保护（并行会话可能正在用）
+      if lsof +D "$cand" >/dev/null 2>&1; then
+        continue
+      fi
+      tmp_reap_targets+=("$cand")
+    done
+  done
+  # 去重（macOS /tmp 是 /private/tmp 的符号链接，扫描会命中同一文件两次）：
+  # 以真实设备号+inode 为键去重，保留 first-seen 路径
+  if [ "${#tmp_reap_targets[@]}" -gt 0 ]; then
+    deduped="$(printf '%s\n' "${tmp_reap_targets[@]}" | while IFS= read -r q; do
+      [ -e "$q" ] || continue
+      key="$(stat -f '%d:%i' "$q" 2>/dev/null || stat -c '%d:%i' "$q" 2>/dev/null)" || continue
+      echo "$key $q"
+    done | sort -n -k1.1 | awk '!seen[$1]++ { $1=""; sub(/^ /,""); print }')"
+    tmp_reap_targets=()
+    while IFS= read -r p; do
+      [ -z "$p" ] && continue
+      tmp_reap_targets+=("$p")
+    done <<< "$deduped"
+  fi
+
+  # ③ Agent 浏览器任务空间（委托给 cs browser gc，它自带归属与 dry-run 判据）
+  if command -v cs >/dev/null 2>&1; then
+    gc_out="$(cs browser gc --dry-run --non-interactive 2>/dev/null || true)"
+    gc_n=""
+    if echo "$gc_out" | grep -qE '发现 [0-9]+ 个待回收'; then
+      gc_n="$(echo "$gc_out" | grep -oE '[0-9]+' | head -1)"
+    fi
+    if [ -n "$gc_n" ]; then browser_gc_count="$gc_n"; fi
+  fi
+fi
+
+freed_branches_count=${#branch_reap_targets[@]}
+freed_tmp_count=${#tmp_reap_targets[@]}
+total_items=$((freed_skills_count + freed_ai_count + freed_garbage_count + freed_drafts_count + freed_caches_count + freed_branches_count + freed_tmp_count))
 
 if [ "$SHARE_MODE" -eq 0 ]; then
   echo ""
@@ -515,10 +636,44 @@ if [ "$SHARE_MODE" -eq 0 ]; then
     fi
   fi
 
+  # 会话过程资产报告
+  if [ "$ENABLE_SESSIONS" -eq 1 ]; then
+    echo ""
+    echo "🧟 会话过程资产 (--sessions):"
+    if [ "${#branch_reap_targets[@]}" -gt 0 ]; then
+      echo "  🪓 已并入可删分支 (${#branch_reap_targets[@]} 条):"
+      for b in "${branch_reap_targets[@]}"; do echo "    - $b"; done
+    else
+      echo "  ✅ 无已并入的待删分支"
+    fi
+    if [ "${#branch_skip_targets[@]}" -gt 0 ]; then
+      echo "  ⚠️  保留分支 (${#branch_skip_targets[@]} 条):"
+      for b in "${branch_skip_targets[@]}"; do echo "    - $b"; done
+    fi
+    if [ "${#rbranch_reap_targets[@]}" -gt 0 ]; then
+      echo "  ☁️  远端已并入分支 (${#rbranch_reap_targets[@]} 条，需 --apply --remote 删除):"
+      for b in "${rbranch_reap_targets[@]}"; do echo "    - $b"; done
+    fi
+    if [ "${#tmp_reap_targets[@]}" -gt 0 ]; then
+      echo "  🗑️  /tmp 项目遗留（>${SESS_STALE_DAYS}天无占用）(${#tmp_reap_targets[@]} 项):"
+      for p in "${tmp_reap_targets[@]}"; do echo "    - $p"; done
+    else
+      echo "  ✅ 无 /tmp 项目遗留"
+    fi
+    if [ "${#stash_report_items[@]}" -gt 0 ]; then
+      echo "  📌 stash 残留 (${#stash_report_items[@]} 条，默认只报告；--apply --stash 才 drop):"
+      for s in "${stash_report_items[@]}"; do echo "    - $s"; done
+    fi
+    if [ "$browser_gc_count" -gt 0 ]; then
+      echo "  🖥️  Agent 浏览器任务空间待回收: ${browser_gc_count} 个"
+    fi
+  fi
+
   echo "--------------------------------------------------"
 fi
 
-if [ "$total_items" -eq 0 ] && [ "${#wt_reap_targets[@]}" -eq 0 ] && [ "$system_cache_freed_bytes" -eq 0 ]; then
+if [ "$total_items" -eq 0 ] && [ "${#wt_reap_targets[@]}" -eq 0 ] && [ "$system_cache_freed_bytes" -eq 0 ] \
+   && [ "$browser_gc_count" -eq 0 ] && [ "${#stash_report_items[@]}" -eq 0 ]; then
   if [ "$SHARE_MODE" -eq 0 ]; then
     echo "🎉 恭喜！未发现任何死代码与墓碑，项目很干净！"
   fi
@@ -605,6 +760,49 @@ for p in "${wt_reap_targets[@]}"; do
   fi
 done
 
+# 收割会话过程资产（仅 --sessions --apply）
+if [ "$ENABLE_SESSIONS" -eq 1 ]; then
+  for b in "${branch_reap_targets[@]}"; do
+    if git branch -d "$b" >/dev/null 2>&1; then
+      [ "$SHARE_MODE" -eq 0 ] && echo "  🪓 已删除已并入分支: $b"
+    else
+      [ "$SHARE_MODE" -eq 0 ] && echo "  ⚠️  分支删除失败（可能被 worktree 占用）: $b"
+    fi
+  done
+  if [ "$ENABLE_REMOTE" -eq 1 ]; then
+    for rb in "${rbranch_reap_targets[@]}"; do
+      remote_name="${rb%%/*}"
+      branch_part="${rb#*/}"
+      if git push "$remote_name" --delete "$branch_part" >/dev/null 2>&1; then
+        [ "$SHARE_MODE" -eq 0 ] && echo "  ☁️  已删除远端已并入分支: $rb"
+      else
+        [ "$SHARE_MODE" -eq 0 ] && echo "  ⚠️  远端分支删除失败（无权限或已不存在）: $rb"
+      fi
+    done
+  fi
+  for p in "${tmp_reap_targets[@]}"; do
+    if rm -rf "$p" 2>/dev/null; then
+      [ "$SHARE_MODE" -eq 0 ] && echo "  🗑️  已清除 /tmp 项目遗留: $p"
+    else
+      [ "$SHARE_MODE" -eq 0 ] && echo "  ⚠️  /tmp 遗留清理失败: $p"
+    fi
+  done
+  if [ "$ENABLE_STASH" -eq 1 ] && [ "${#stash_report_items[@]}" -gt 0 ]; then
+    # 倒序 drop（stash@{N} 会因删除而重排）
+    n=${#stash_report_items[@]}
+    for ((i=n-1; i>=0; i--)); do
+      ref="${stash_report_items[$i]%%:*}"
+      if git stash drop "$ref" >/dev/null 2>&1; then
+        [ "$SHARE_MODE" -eq 0 ] && echo "  📌 已 drop stash: $ref"
+      fi
+    done
+  fi
+  if [ "$browser_gc_count" -gt 0 ] && command -v cs >/dev/null 2>&1; then
+    [ "$SHARE_MODE" -eq 0 ] && echo "  🖥️  回收 Agent 浏览器任务空间..."
+    cs browser gc --non-interactive >/dev/null 2>&1 || true
+  fi
+fi
+
 # 持久化累加至全局功德簿 (~/.tombstone-ledger.json)
 LEDGER="$HOME/.tombstone-ledger.json"
 if [ ! -f "$LEDGER" ]; then
@@ -626,6 +824,9 @@ d['total_drafts'] = d.get('total_drafts', 0) + $freed_drafts_count
 d['total_garbage'] = d.get('total_garbage', 0) + $freed_garbage_count
 d['total_tokens'] = d.get('total_tokens', 0) + $est_tokens
 d['total_cache_bytes'] = d.get('total_cache_bytes', 0) + $ledger_cache_delta
+d['total_branches'] = d.get('total_branches', 0) + $freed_branches_count
+d['total_tmp_items'] = d.get('total_tmp_items', 0) + $freed_tmp_count
+d['total_worktrees'] = d.get('total_worktrees', 0) + ${#wt_reap_targets[@]}
 d['last_project'] = '$(basename "$ROOT_PWD")'
 import datetime
 d['last_burial_time'] = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')

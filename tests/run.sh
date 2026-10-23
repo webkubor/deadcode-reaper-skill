@@ -179,6 +179,57 @@ EOF
 assert_file_exists "  plugins/auth 被归档（不撞名）" "$TMP/archive/skills/plugins__auth/SKILL.md"
 assert_file_exists "  tools/auth  被归档（不撞名）" "$TMP/archive/skills/tools__auth/SKILL.md"
 
+# --- T7: --sessions 收割会话过程资产（分支 / /tmp 遗留 / stash） ---
+echo ""
+echo "T7 · --sessions 会话过程资产收割"
+rm -rf "$TMP"
+mkdir -p "$TMP"
+(cd "$TMP" && git init -q && git -c user.email=test@x -c user.name=test commit -q --allow-empty -m "root" >/dev/null 2>&1)
+# 默认分支名兼容（老 git 是 master，新 git 可能 main）
+default_branch="$(cd "$TMP" && git branch --show-current)"
+(cd "$TMP" && git branch merged-done && git branch wip-unmerged)
+(cd "$TMP" && git checkout -q merged-done && git -c user.email=test@x -c user.name=test commit -q --allow-empty -m "on merged branch")
+(cd "$TMP" && git checkout -q "$default_branch" && git merge -q --no-ff merged-done -m "merge merged-done" >/dev/null 2>&1)
+(cd "$TMP" && git checkout -q wip-unmerged && git -c user.email=test@x -c user.name=test commit -q --allow-empty -m "wip")
+(cd "$TMP" && git checkout -q "$default_branch")
+echo "stashed" > "$TMP/stashme.txt" && (cd "$TMP" && git add -A && git stash -q 2>/dev/null || true)
+# /tmp 项目遗留：一个 8 天前的（应命中）+ 一个新的（应保留）
+tmp_proj="$(basename "$TMP")"
+old_ts="$(date -v-8d +%Y%m%d%H%M 2>/dev/null || date -d '8 days ago' +%Y%m%d%H%M)"
+touch -t "$old_ts" "/tmp/${tmp_proj}-oldrun" 2>/dev/null || true
+echo "recent" > "/tmp/${tmp_proj}-newrun" 2>/dev/null || true
+
+out=$(cd "$TMP" && bash "$SCRIPT" --check --sessions 2>&1)
+assert_contains "  dry-run 检出已并入分支" "merged-done" "$out"
+assert_contains "  保留未合并分支并说明原因" "wip-unmerged (有未合并提交)" "$out"
+assert_contains "  报告 stash 残留" "stash 残留" "$out"
+assert_contains "  检出 /tmp 8天前遗留" "/tmp/${tmp_proj}-oldrun" "$out"
+assert_not_contains "  不碰 1 小时内的新 /tmp 条目" "/tmp/${tmp_proj}-newrun" "$out"
+
+(cd "$TMP" && bash "$SCRIPT" --apply --sessions >/dev/null 2>&1)
+if (cd "$TMP" && git branch | grep -q "merged-done"); then
+  echo "  ✗ 已并入分支未被删除"; FAIL=$((FAIL+1)); FAILED_TESTS+=("已并入分支删除")
+else
+  echo "  ✓ 已并入分支被删除"; PASS=$((PASS+1))
+fi
+if (cd "$TMP" && git branch | grep -q "wip-unmerged"); then
+  echo "  ✓ 未合并分支保留"; PASS=$((PASS+1))
+else
+  echo "  ✗ 未合并分支被误删"; FAIL=$((FAIL+1)); FAILED_TESTS+=("未合并分支保留")
+fi
+if [ ! -e "/tmp/${tmp_proj}-oldrun" ]; then
+  echo "  ✓ /tmp 8天前遗留被清除"; PASS=$((PASS+1))
+else
+  echo "  ✗ /tmp 8天前遗留未被清除"; FAIL=$((FAIL+1)); FAILED_TESTS+=("/tmp 遗留清除")
+  rm -f "/tmp/${tmp_proj}-oldrun"
+fi
+if [ -e "/tmp/${tmp_proj}-newrun" ]; then
+  echo "  ✓ 新 /tmp 条目保留"; PASS=$((PASS+1))
+else
+  echo "  ✗ 新 /tmp 条目被误删"; FAIL=$((FAIL+1)); FAILED_TESTS+=("新 /tmp 条目保留")
+fi
+rm -f "/tmp/${tmp_proj}-newrun"
+
 # --- 汇总 ---
 echo ""
 echo "=================================================="
