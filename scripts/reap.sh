@@ -463,7 +463,13 @@ if [ -d .git ] || [ -f .git ]; then
   while IFS= read -r wt; do
     [ -z "$wt" ] && continue
     wt_path="$(echo "$wt" | awk '{print $1}')"
+    # prunable 的 worktree 目录已不存在（git 标记待清理），直接归入待清列表
+    if [ ! -d "$wt_path" ]; then
+      wt_reap_targets+=("$wt_path")
+      continue
+    fi
     wt_resolved="$(cd "$wt_path" 2>/dev/null && pwd)"
+    [ -z "$wt_resolved" ] && { wt_skip_targets+=("$wt_path (无法解析)"); continue; }
     [ "$wt_resolved" = "$root_resolved" ] && continue
     if git -C "$wt_path" diff --quiet HEAD 2>/dev/null && \
        git -C "$wt_path" diff --quiet --cached 2>/dev/null; then
