@@ -1,6 +1,6 @@
 ---
 name: deadcode-reaper-skill
-version: 1.1.0
+version: 1.2.0
 description: "代码与技能墓碑收割机 — 识别并清除代码库中「自称已废」的墓碑技能、AI 幽灵碎片、死代码、临时备份与无用构建缓存，自动统计释放的 Token 与战报卡片。无用本身就是删除的充分理由，立了墓碑不叫下线，入土为安才叫下线。触发词: 墓碑、死代码、减法、垃圾回收、清理无用、tombstone、reaper、清理技能、代码下线、gc、减法优先、tombstone-reaper。"
 license: MIT
 author: webkubor
@@ -38,6 +38,7 @@ metadata:
 | **🗑️ 幽灵垃圾** | `*.bak`、`*.bak2`、`*.update.lock`、`*~`、`.DS_Store` | 污染 `git status`，容易误提交进仓库 | 彻底粉碎删除 |
 | **📄 草稿碎片** | < 100 字节且无 frontmatter 的散落 `.md` | 误导全局搜索，形成知识噪音 | 归档或删除 |
 | **🌳 孤立工作树** | 关联任务已结束、HEAD 干净但未 prune 的 `git worktree` | 导致本地全局搜索（grep/find）双倍冗余 | `--apply` 模式下 `git worktree remove` 安全解绑 |
+| **🧟 会话遗留资产** | 已并入的本地/远端分支、`/tmp/<项目>-*` 诊断残留、stash、Agent 浏览器 TaskSpace | 任务结束没人管：17 个 worktree 曾占死 15 条已并入分支，/tmp 脚本无判据无人清 | `--sessions` 触发；分支须已并入且不被 worktree 占用；/tmp 须超龄且无进程占用；stash/浏览器只报告或需显式开关 |
 | **⚡ 构建与系统缓存** | 项目级 `__pycache__` / `.turbo` 及系统级包管理器（npm/pip/go/brew）缓存 | 白白蚕食数 GB 到数十 GB 磁盘空间 | 需加 `--cache` 或 `--system-cache` 触发清理 |
 
 ---
@@ -64,7 +65,15 @@ bash scripts/reap.sh --bury --deep # 或 --all
 bash scripts/reap.sh --bury --share
 ```
 
-### 5. 查看累计功德账本
+### 5. 收割会话过程资产（分支 / /tmp 遗留 / stash / 浏览器窗口）
+```bash
+bash scripts/reap.sh --check --sessions    # 报告已并入分支、/tmp 项目遗留、stash、Agent 浏览器 TaskSpace
+bash scripts/reap.sh --bury  --sessions    # 删已并入分支 + 超龄 /tmp 遗留（stash 只报告，默认不动）
+bash scripts/reap.sh --bury  --sessions --remote --stash  # 连远端已并入分支与 stash 一起清
+```
+判据：分支须 `git merge-base --is-ancestor HEAD` 且不被任何 worktree 占用（被占分支 `-d` 必失败，先清 worktree）；`/tmp` 条目须匹配 `<项目名>-*`、mtime 超过 `REAP_SESS_STALE_DAYS`（默认 7 天）、不在最近 1 小时内、且无活跃进程占用（`lsof +D`，保护并行会话）。Agent 浏览器窗口委托 `cs browser gc`（装了 cs 才生效）。
+
+### 6. 查看累计功德账本
 ```bash
 bash scripts/reap.sh --stats
 ```
