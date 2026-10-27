@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="https://cdn.jsdelivr.net/gh/webkubor/picx-images-hosting@master/tombstone-reaper/burial-certificate.png/%E6%88%AA%E5%B1%8F2026-09-19%2012.13.08.png" alt="Tombstone Reaper Cyberpunk Terminal UI" width="680" style="border-radius: 8px; box-shadow: 0 4px 20px rgba(0,255,170,0.15);">
+  <img src="https://cdn.jsdelivr.net/gh/webkubor/free-imgbed@main/tombstone-reaper/burial-certificate-2026-09-19.png" alt="Tombstone Reaper Cyberpunk Terminal UI" width="680" style="border-radius: 8px; box-shadow: 0 4px 20px rgba(0,255,170,0.15);">
 </p>
 
 ---
