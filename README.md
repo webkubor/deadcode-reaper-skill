@@ -101,6 +101,21 @@
 本仓库完全符合 `CS Skill Spec v1.0` 规范，只需挂载 `SKILL.md`，你的 Agent（Claude Code / Codex / DSH / Cursor）即可获得清道夫本能：
 * 唤醒词：`"收割墓碑"`、`"清理死代码"`、`"减法优先"`、`"tombstone"`、`"看看有什么该删的"`。
 
+克隆仓库后，在仓库根目录运行：
+
+```bash
+./install.sh              # 装到本机已存在的各个 Agent 运行时目录
+./install.sh --list       # 只看会装到哪，不改任何文件
+./install.sh --copy       # 拷贝而非软链
+./install.sh --uninstall  # 卸载
+```
+
+脚本用软链把本仓库挂进运行时目录，所以改源码即时生效。也可以用生态标准工具选择支持的 Agent 安装：
+
+```bash
+npx skills add webkubor/deadcode-reaper-skill
+```
+
 ---
 
 ## 🧪 本地自检
