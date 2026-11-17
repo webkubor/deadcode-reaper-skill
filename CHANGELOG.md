@@ -55,3 +55,7 @@ owner 2026-10-23 在 GHAM 仓库大清理（18 分支 + 17 worktree + /tmp 诊�
 ---
 
 完整 commit 列表见 `git log`。
+## 1.3.0 (2026-11-17)
+
+- 铁律新增第 4 条「验证后被取代」：经实测被更优通道取代、保留即双写漂移的能力直接入土（owner 判例：agent-global-rules-sync 被 magpie library instructions 通道取代后收割归档）
+- 调度落地：com.webkubor.tombstone-reaper 每日 04:35 自动 --bury（owner 原话「我不是每天都在清理吗」——此前无任何调度，纯手动）

@@ -1,6 +1,6 @@
 ---
 name: deadcode-reaper-skill
-version: 1.2.0
+version: 1.3.0
 description: "代码与技能墓碑收割机 — 识别并清除代码库中「自称已废」的墓碑技能、AI 幽灵碎片、死代码、临时备份与无用构建缓存，自动统计释放的 Token 与战报卡片。无用本身就是删除的充分理由，立了墓碑不叫下线，入土为安才叫下线。触发词: 墓碑、死代码、减法、垃圾回收、清理无用、tombstone、reaper、清理技能、代码下线、gc、减法优先、tombstone-reaper。"
 license: MIT
 author: webkubor
@@ -87,7 +87,10 @@ bash scripts/reap.sh --stats
 命中以下任意一条，**直接执行减法，不需要请示**：
 1. **自称已废**：SKILL.md 前 25 行已显式声明"已废弃/已停用/已退役/status: deprecated"；
 2. **零调用且目标已死**：它所调用的 API/数据表/CLI 已从系统中物理移除；
-3. **临时产物**：构建过程生成的 `.bak`、`.bak2`、`.update.lock`、`~` 文件。
+3. **临时产物**：构建过程生成的 `.bak`、`.bak2`、`.update.lock`、`~` 文件；
+4. **验证后被取代**（owner 2026-11-17 判例扩展）：经实测验证其流程已被更优通道取代、
+   继续保留构成双写/漂移风险的能力（例：手工编辑 agent 配置的技能被自动化注入通道取代）。
+   证据入 commit message，git mv 归档可召回。
 
 ---
 
