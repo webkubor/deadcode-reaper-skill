@@ -2,6 +2,21 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [1.4.0] - 2026-11-17
+
+### 新特性 (Features)
+
+- 并入 resource-audit（owner 指令「卫生清理技能整合进墓碑」）：新增「无消费方资源」对象类别（密钥/模型/缓存/分支/任务，判据「谁在用」而非「多大多旧」），触发词并入磁盘清理/治理盘点/资源审计/密钥审计/无消费方/孤儿密钥；原技能入土归档
+- 新增「清理域地图」：与 service-retirement（退役流程，需授权）、cron-management（定时器卫生）划清语义边界 —— 墓碑铁律免请示绝不适用于服务/凭据/数据退役
+- service-retirement 明确保留独立：其免授权边界与墓碑免请示语义冲突，合并会造成用垃圾回收的刀切生产资产
+
+## [1.3.0] - 2026-11-17
+
+### 新特性 (Features)
+
+- 铁律新增第 4 条「验证后被取代」：经实测被更优通道取代、保留即双写漂移的能力直接入土（owner 判例：agent-global-rules-sync 被 magpie library instructions 通道取代后收割归档）
+- 调度落地：com.webkubor.tombstone-reaper 每日 04:35 自动 --bury（owner 原话「我不是每天都在清理吗」——此前无任何调度，纯手动）
+
 ## [1.2.0] - 2026-10-23
 
 ### 新特性 (Features)
@@ -55,13 +70,3 @@ owner 2026-10-23 在 GHAM 仓库大清理（18 分支 + 17 worktree + /tmp 诊�
 ---
 
 完整 commit 列表见 `git log`。
-## 1.3.0 (2026-11-17)
-
-- 铁律新增第 4 条「验证后被取代」：经实测被更优通道取代、保留即双写漂移的能力直接入土（owner 判例：agent-global-rules-sync 被 magpie library instructions 通道取代后收割归档）
-- 调度落地：com.webkubor.tombstone-reaper 每日 04:35 自动 --bury（owner 原话「我不是每天都在清理吗」——此前无任何调度，纯手动）
-
-## 1.4.0 (2026-11-17)
-
-- 并入 resource-audit（owner 指令「卫生清理技能整合进墓碑」）：新增「无消费方资源」对象类别（密钥/模型/缓存/分支/任务，判据「谁在用」而非「多大多旧」），触发词并入磁盘清理/治理盘点/资源审计/密钥审计/无消费方/孤儿密钥；原技能入土归档
-- 新增「清理域地图」：与 service-retirement（退役流程，需授权）、cron-management（定时器卫生）划清语义边界 —— 墓碑铁律免请示绝不适用于服务/凭据/数据退役
-- service-retirement 明确保留独立：其免授权边界与墓碑免请示语义冲突，合并会造成用垃圾回收的刀切生产资产
