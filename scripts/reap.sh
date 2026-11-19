@@ -460,10 +460,14 @@ wt_reap_targets=()
 wt_skip_targets=()
 if [ -d .git ] || [ -f .git ]; then
   root_resolved="$(cd "$ROOT_PWD" 2>/dev/null && pwd)"
-  while IFS= read -r wt; do
-    [ -z "$wt" ] && continue
-    wt_path="$(echo "$wt" | awk '{print $1}')"
-    # prunable 的 worktree 目录已不存在（git 标记待清理），直接归入待清列表
+  # 干净判据 = status --porcelain 为空（含未跟踪文件）。教训（2026-11-19）：旧判据只看
+  # diff HEAD/--cached，未跟踪的新文件被当成「干净」，再配 remove --force 会直接粉碎。
+  # 用 --porcelain 解析：路径可含空格，且能读到 locked 标记。
+  while IFS=$'\t' read -r wt_path wt_locked wt_main; do
+    [ -z "$wt_path" ] && continue
+    # 主工作区永不收割（在 linked worktree 里运行时它不等于 ROOT_PWD，须单独排除）
+    [ "$wt_main" = 1 ] && continue
+    # prunable：目录已不存在，只剩 git 元数据，apply 时走 git worktree prune
     if [ ! -d "$wt_path" ]; then
       wt_reap_targets+=("$wt_path")
       continue
@@ -471,13 +475,24 @@ if [ -d .git ] || [ -f .git ]; then
     wt_resolved="$(cd "$wt_path" 2>/dev/null && pwd)"
     [ -z "$wt_resolved" ] && { wt_skip_targets+=("$wt_path (无法解析)"); continue; }
     [ "$wt_resolved" = "$root_resolved" ] && continue
-    if git -C "$wt_path" diff --quiet HEAD 2>/dev/null && \
-       git -C "$wt_path" diff --quiet --cached 2>/dev/null; then
-      wt_reap_targets+=("$wt_path")
-    else
-      wt_skip_targets+=("$wt_path")
+    [ "$wt_locked" = 1 ] && { wt_skip_targets+=("$wt_path (locked)"); continue; }
+    wt_status="$(git -C "$wt_path" status --porcelain 2>/dev/null)" || { wt_skip_targets+=("$wt_path (status 失败)"); continue; }
+    if [ -n "$wt_status" ]; then
+      wt_skip_targets+=("$wt_path (有未提交或未跟踪文件)")
+      continue
     fi
-  done < <(git worktree list 2>/dev/null || true)
+    # 游离 HEAD 上独有的提交：删掉 worktree 后只剩 reflog，视为不安全。
+    # 注意不能用 `branch -a --contains HEAD`：游离时它会输出「* (no branch)」行，永不为空。
+    if ! git -C "$wt_path" symbolic-ref -q HEAD >/dev/null 2>&1 && \
+       [ -z "$(git -C "$wt_path" for-each-ref --contains HEAD --format='%(refname)' refs/heads refs/remotes 2>/dev/null)" ]; then
+      wt_skip_targets+=("$wt_path (游离 HEAD 有未入分支的提交)")
+      continue
+    fi
+    wt_reap_targets+=("$wt_path")
+  done < <(git worktree list --porcelain 2>/dev/null | awk '
+    /^worktree /{ if (p != "") print p "\t" l "\t" (n == 1); p = substr($0, 10); l = 0; n++ }
+    /^locked/{ l = 1 }
+    END{ if (p != "") print p "\t" l "\t" (n == 1) }' || true)
 fi
 
 # ===== 会话过程资产收割（仅 --sessions）=====
@@ -634,7 +649,7 @@ if [ "$SHARE_MODE" -eq 0 ]; then
         for p in "${wt_reap_targets[@]}"; do echo "    - $p"; done
       fi
       if [ "${#wt_skip_targets[@]}" -gt 0 ]; then
-        echo "  ⚠️  跳过（HEAD 不干净）(${#wt_skip_targets[@]} 个):"
+        echo "  ⚠️  跳过（不干净或不安全）(${#wt_skip_targets[@]} 个):"
         for p in "${wt_skip_targets[@]}"; do echo "    - $p"; done
       fi
     else
@@ -757,9 +772,15 @@ if [ "$ENABLE_SYSTEM_CACHE" -eq 1 ]; then
   rm -rf "$HOME/Library/Caches/"*updater* 2>/dev/null || true
 fi
 
-# 收割孤立 worktree（仅 HEAD 干净的）
+# 收割孤立 worktree（仅 status 全干净的）。不加 --force：扫描后若又出现新文件，git 自己会拒绝
+wt_pruned=0
 for p in "${wt_reap_targets[@]}"; do
-  if git worktree remove --force "$p" 2>/dev/null; then
+  if [ ! -d "$p" ]; then
+    [ "$wt_pruned" -eq 0 ] && git worktree prune 2>/dev/null; wt_pruned=1
+    [ "$SHARE_MODE" -eq 0 ] && echo "  🌳 已 prune 失效工作树记录: $p"
+    continue
+  fi
+  if git worktree remove "$p" 2>/dev/null; then
     [ "$SHARE_MODE" -eq 0 ] && echo "  🌳 已清理孤立工作树: $p"
   else
     [ "$SHARE_MODE" -eq 0 ] && echo "  ⚠️  工作树清理失败: $p"

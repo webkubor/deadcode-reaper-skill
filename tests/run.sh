@@ -230,6 +230,48 @@ else
 fi
 rm -f "/tmp/${tmp_proj}-newrun"
 
+# --- T8: worktree 干净判据含未跟踪文件（2026-11-19 教训：旧判据只看 diff，未跟踪文件会被 remove --force 粉碎） ---
+echo ""
+echo "T8 · worktree 收割只认 status 全干净"
+rm -rf "$TMP"
+mkdir -p "$TMP"
+# git 输出的是物理路径（macOS 上 /var → /private/var），断言须用 pwd -P 对齐，
+# 否则「不包含」类断言会因路径前缀不同而假阳性通过
+WTS="$(cd "$(mktemp -d)" && pwd -P)"
+TMP_P="$(cd "$TMP" && pwd -P)"
+gcommit() { git -c user.email=test@x -c user.name=test commit -q "$@"; }
+(cd "$TMP" && git init -q && echo base > base.txt && git add -A && gcommit -m "root")
+(cd "$TMP" && git worktree add -q "$WTS/wt-clean" -b wt-clean)
+(cd "$TMP" && git worktree add -q "$WTS/wt untracked" -b wt-untracked)
+echo "新写的未提交文件" > "$WTS/wt untracked/new-work.txt"
+(cd "$TMP" && git worktree add -q "$WTS/wt-locked" -b wt-locked && git worktree lock "$WTS/wt-locked")
+(cd "$TMP" && git worktree add -q --detach "$WTS/wt-detached")
+(cd "$WTS/wt-detached" && gcommit --allow-empty -m "游离提交")
+
+out=$(cd "$TMP" && bash "$SCRIPT" --check 2>&1)
+assert_contains "  干净 worktree 列为候选" "    - $WTS/wt-clean" "$out"
+assert_contains "  含空格路径完整解析且因未跟踪文件跳过" "$WTS/wt untracked (有未提交或未跟踪文件)" "$out"
+assert_contains "  locked worktree 跳过" "$WTS/wt-locked (locked)" "$out"
+assert_contains "  游离 HEAD 独有提交跳过" "$WTS/wt-detached (游离 HEAD 有未入分支的提交)" "$out"
+
+# 在 linked worktree 里运行：主工作区不得成为候选
+out=$(cd "$WTS/wt-clean" && bash "$SCRIPT" --check 2>&1)
+assert_not_contains "  linked worktree 里运行不把主工作区列为候选" "    - $TMP_P" "$out"
+assert_not_contains "  linked worktree 里运行不把自身列为候选" "    - $WTS/wt-clean" "$out"
+
+(cd "$TMP" && bash "$SCRIPT" --apply >/dev/null 2>&1)
+assert_file_gone "  干净 worktree 被移除" "$WTS/wt-clean"
+assert_file_exists "  未跟踪文件幸存" "$WTS/wt untracked/new-work.txt"
+assert_file_exists "  locked worktree 保留" "$WTS/wt-locked"
+assert_file_exists "  游离 HEAD worktree 保留" "$WTS/wt-detached"
+
+# prunable：目录被手动删掉后，apply 只 prune 元数据
+(cd "$TMP" && git worktree unlock "$WTS/wt-locked")
+rm -rf "$WTS/wt-locked"
+(cd "$TMP" && bash "$SCRIPT" --apply >/dev/null 2>&1)
+assert_not_contains "  失效 worktree 记录被 prune" "$WTS/wt-locked" "$(cd "$TMP" && git worktree list --porcelain)"
+rm -rf "$WTS"
+
 # --- 汇总 ---
 echo ""
 echo "=================================================="

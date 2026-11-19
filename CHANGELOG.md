@@ -2,6 +2,21 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [1.4.1] - 2026-11-19
+
+### 修复 (Fixes)
+
+- **worktree 收割不再粉碎未跟踪文件**：旧判据只看 diff，未跟踪的新文件会随 `remove --force` 一起被删。现在只有 `git status --porcelain` 全空才算干净，否则跳过并报「有未提交或未跟踪文件」
+- 移除 worktree 改用不带 `--force` 的 `git worktree remove`，git 自身的安全检查不再被绕过
+- 改为解析 `git worktree list --porcelain`，含空格的路径能完整识别
+- 新增跳过规则：主工作区（在 linked worktree 里运行时也不会把它列为候选）、locked worktree、游离 HEAD 上有未入任何分支的提交的 worktree
+- 游离 HEAD 判据用 `for-each-ref --contains HEAD refs/heads refs/remotes`。`branch -a --contains HEAD` 在游离时会输出「* (no branch)」，永不为空，旧写法下这条保护从未生效
+- 目录已被手动删掉的失效 worktree 记录，`--apply` 时执行一次 `git worktree prune`
+
+### 测试 (Tests)
+
+- 新增 T8：覆盖干净/未跟踪/含空格路径/locked/游离 HEAD/主工作区/失效记录 prune。断言路径统一用 `pwd -P`，避免 macOS `/var` 与 `/private/var` 前缀不一致导致「不包含」断言空过
+
 ## [1.4.0] - 2026-11-17
 
 ### 新特性 (Features)
