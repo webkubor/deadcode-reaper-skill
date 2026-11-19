@@ -8,3 +8,6 @@
 *.log
 archive/
 .tombstone-ledger.json
+
+# Claude Code 本地设置与 worktrees，不入库
+/.claude/
