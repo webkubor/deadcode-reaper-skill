@@ -2,6 +2,19 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [1.4.2] - 2026-11-19
+
+### 修复 (Fixes)
+
+- **经软链调用时自身排除失效**：`SELF_DIR` 与扫描根取的是逻辑路径，而 find 结果是物理路径，二者对不上，reaper 经软链（如 `~/.gemini/config/skills/...`）调用时会把自己的 SKILL.md 和 fixtures 报成墓碑。所有 `pwd` 统一改为 `pwd -P`
+- **`temp_*.py` 不再误报虚拟环境里的第三方包**：pip 自带 `_internal/utils/temp_dir.py`，旧规则会命中。AI 幽灵扫描跳过 `.venv*/`、`venv/`、`site-packages/`
+
+### 测试 (Tests)
+
+- 新增 T9：脚本和目标目录分别经软链传入，断言不报墓碑、自检显示「项目很干净」
+- 新增 T10：`.venv`、`venv/`、`site-packages` 下的 `temp_*.py` 不报，仓库根的 `temp_*.py` 仍报
+- 用修复前的 `scripts/reap.sh` 跑同一套测试，T9/T10 共 5 条断言失败（52/5），确认新测试能抓到这两个问题
+
 ## [1.4.1] - 2026-11-19
 
 ### 修复 (Fixes)

@@ -6,7 +6,8 @@
 set -euo pipefail
 
 # 锚定脚本所在仓库根（用于排除自身目录与自家归档，避免自食其果）
-SELF_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# 一律取物理路径（pwd -P）：经软链调用时逻辑路径与 find 结果的物理路径对不上，自身排除会失效
+SELF_DIR="$(cd "$(dirname "$0")/.." && pwd -P)"
 
 TARGET_DIR="."
 MODE="dry-run"
@@ -37,7 +38,7 @@ usage() {
 
 触发对象:
   ⚰️  墓碑技能   SKILL.md frontmatter 自称已废（【已停用】/status: deprecated/…）
-  🤖  AI 幽灵    *.rej (补丁拒绝块) / *.scratch.* / temp_*.py / scratch/ 临时脚本
+  🤖  AI 幽灵    *.rej (补丁拒绝块) / *.scratch.* / temp_*.py / scratch/ 临时脚本（跳过 venv/site-packages）
   🗑️  幽灵垃圾   *.bak / *.bak2 / *.update.lock / *~ / *.tmp / *.orig / .DS_Store
   📄  草稿碎片   < 100 字节且无 frontmatter 的散落 .md
   🌳  孤立工作树 仅 --apply：HEAD 干净且非主工作树，安全 prune
@@ -104,7 +105,7 @@ PYEOF
 done
 
 cd "$TARGET_DIR"
-ROOT_PWD="$(pwd)"
+ROOT_PWD="$(pwd -P)"
 ARCHIVE_DIR="$ROOT_PWD/archive/skills"
 SELF_ARCHIVE_DIR="$SELF_DIR/archive/skills"
 
@@ -311,9 +312,9 @@ declare -A _seen_skill_dirs
 compute_skill_size() {
   local rel_path="$1"
   local abs_file
-  abs_file="$(cd "$(dirname "$rel_path")" && pwd)/$(basename "$rel_path")"
+  abs_file="$(cd "$(dirname "$rel_path")" && pwd -P)/$(basename "$rel_path")"
   local dir
-  dir="$(cd "$(dirname "$rel_path")" && pwd)"
+  dir="$(cd "$(dirname "$rel_path")" && pwd -P)"
 
   if [ -n "${_seen_skill_dirs[$dir]:-}" ]; then
     echo 0
@@ -332,7 +333,7 @@ compute_skill_size() {
 # 1. 扫描自称已废的墓碑技能 (Tombstone Skills)
 while IFS= read -r -d '' f; do
   [ -f "$f" ] || continue
-  abs="$(cd "$(dirname "$f")" && pwd)/$(basename "$f")"
+  abs="$(cd "$(dirname "$f")" && pwd -P)/$(basename "$f")"
   is_in_self_archive "$abs" && continue
   is_in_self_dir "$abs" && continue
   fm_header=$(head -n 25 "$f" 2>/dev/null || true)
@@ -348,9 +349,10 @@ done < <(find . \
   -print0 2>/dev/null || true)
 
 # 2. 扫描 AI 幽灵碎片与临时脚手架 (*.rej / *.scratch.* / scratch/ 临时文件 / temp_*.py 等)
+#    跳过虚拟环境与第三方包：pip 自带 _internal/utils/temp_dir.py，命中 temp_*.py 属误杀
 while IFS= read -r -d '' f; do
   [ -f "$f" ] || continue
-  abs="$(cd "$(dirname "$f")" && pwd)/$(basename "$f")"
+  abs="$(cd "$(dirname "$f")" && pwd -P)/$(basename "$f")"
   is_in_self_archive "$abs" && continue
   is_in_self_dir "$abs" && continue
   ai_artifacts+=("$f")
@@ -361,12 +363,15 @@ done < <(find . \
   -not -path "*/.git/*" \
   -not -path "*/node_modules/*" \
   -not -path "*/archive/*" \
+  -not -path "*/.venv*/*" \
+  -not -path "*/venv/*" \
+  -not -path "*/site-packages/*" \
   -print0 2>/dev/null || true)
 
 # 3. 扫描传统临时与备份垃圾 (Garbage / Bak / Lock files)
 while IFS= read -r -d '' f; do
   [ -f "$f" ] || continue
-  abs="$(cd "$(dirname "$f")" && pwd)/$(basename "$f")"
+  abs="$(cd "$(dirname "$f")" && pwd -P)/$(basename "$f")"
   is_in_self_archive "$abs" && continue
   is_in_self_dir "$abs" && continue
   garbage_files+=("$f")
@@ -382,7 +387,7 @@ done < <(find . \
 # 4. 扫描空草稿碎片 (< 100 字节且没有 frontmatter 的 markdown)
 while IFS= read -r -d '' f; do
   [ -f "$f" ] || continue
-  abs="$(cd "$(dirname "$f")" && pwd)/$(basename "$f")"
+  abs="$(cd "$(dirname "$f")" && pwd -P)/$(basename "$f")"
   is_in_self_archive "$abs" && continue
   is_in_self_dir "$abs" && continue
   size=$(wc -c < "$f" 2>/dev/null | tr -d ' ' || echo 0)
@@ -406,7 +411,7 @@ done < <(find . \
 if [ "$ENABLE_CACHE" -eq 1 ]; then
   while IFS= read -r -d '' d; do
     [ -d "$d" ] || continue
-    abs="$(cd "$d" && pwd)"
+    abs="$(cd "$d" && pwd -P)"
     is_in_self_archive "$abs" && continue
     is_in_self_dir "$abs" && continue
     project_caches+=("$d")
@@ -459,7 +464,7 @@ grand_total_bytes=$((total_freed_bytes + freed_cache_bytes + system_cache_freed_
 wt_reap_targets=()
 wt_skip_targets=()
 if [ -d .git ] || [ -f .git ]; then
-  root_resolved="$(cd "$ROOT_PWD" 2>/dev/null && pwd)"
+  root_resolved="$(cd "$ROOT_PWD" 2>/dev/null && pwd -P)"
   # 干净判据 = status --porcelain 为空（含未跟踪文件）。教训（2026-11-19）：旧判据只看
   # diff HEAD/--cached，未跟踪的新文件被当成「干净」，再配 remove --force 会直接粉碎。
   # 用 --porcelain 解析：路径可含空格，且能读到 locked 标记。
@@ -472,7 +477,7 @@ if [ -d .git ] || [ -f .git ]; then
       wt_reap_targets+=("$wt_path")
       continue
     fi
-    wt_resolved="$(cd "$wt_path" 2>/dev/null && pwd)"
+    wt_resolved="$(cd "$wt_path" 2>/dev/null && pwd -P)"
     [ -z "$wt_resolved" ] && { wt_skip_targets+=("$wt_path (无法解析)"); continue; }
     [ "$wt_resolved" = "$root_resolved" ] && continue
     [ "$wt_locked" = 1 ] && { wt_skip_targets+=("$wt_path (locked)"); continue; }

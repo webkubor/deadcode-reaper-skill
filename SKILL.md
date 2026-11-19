@@ -1,6 +1,6 @@
 ---
 name: deadcode-reaper-skill
-version: 1.4.1
+version: 1.4.2
 description: "代码与技能墓碑收割机 — 识别并清除代码库中「自称已废」的墓碑技能、AI 幽灵碎片、死代码、临时备份与无用构建缓存，并审计无消费方资源（密钥/模型/缓存/分支/任务，判据「谁在用」）。自动统计释放的 Token 与战报卡片。无用本身就是删除的充分理由，立了墓碑不叫下线，入土为安才叫下线。触发词: 墓碑、死代码、减法、垃圾回收、清理无用、tombstone、reaper、清理技能、代码下线、gc、减法优先、tombstone-reaper、磁盘清理、治理盘点、资源审计、密钥审计、无消费方、孤儿密钥。"
 license: MIT
 author: webkubor

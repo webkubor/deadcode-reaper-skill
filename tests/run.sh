@@ -272,6 +272,38 @@ rm -rf "$WTS/wt-locked"
 assert_not_contains "  失效 worktree 记录被 prune" "$WTS/wt-locked" "$(cd "$TMP" && git worktree list --porcelain)"
 rm -rf "$WTS"
 
+# --- T9: 经软链调用时自身排除仍生效（2026-11-19 教训：cs-gc 经 ~/.gemini/... 软链调用，
+#     SELF_DIR 取逻辑路径，与 find 结果的物理路径对不上，reaper 把自己的 SKILL.md 和 fixtures 报成墓碑） ---
+echo ""
+echo "T9 · 经软链调用仍排除自身目录"
+LINKDIR="$(mktemp -d)"
+ln -s "$REPO_ROOT" "$LINKDIR/reaper-link"
+out=$(cd "$REPO_ROOT" && bash "$LINKDIR/reaper-link/scripts/reap.sh" --check 2>&1)
+assert_not_contains "  软链调用时 SKILL.md 不被误标为墓碑" "发现自称已废的【墓碑技能】" "$out"
+assert_contains "  软链调用时自检显示'项目很干净'" "项目很干净" "$out"
+# 目标目录本身经软链传入（cs-gc 逐仓传参的形态）
+out=$(bash "$LINKDIR/reaper-link/scripts/reap.sh" --check "$LINKDIR/reaper-link" 2>&1)
+assert_not_contains "  目标目录也走软链时不误标" "发现自称已废的【墓碑技能】" "$out"
+rm -rf "$LINKDIR"
+
+# --- T10: temp_*.py 不误杀虚拟环境里的第三方包（pip 自带 _internal/utils/temp_dir.py） ---
+echo ""
+echo "T10 · temp_*.py 跳过 venv / site-packages"
+rm -rf "$TMP"
+mkdir -p "$TMP/.venv/lib/python3.12/site-packages/pip/_internal/utils" \
+         "$TMP/venv/lib/python3.12/site-packages/pkg" \
+         "$TMP/vendor/site-packages/pkg"
+echo "x = 1" > "$TMP/.venv/lib/python3.12/site-packages/pip/_internal/utils/temp_dir.py"
+echo "x = 1" > "$TMP/venv/lib/python3.12/site-packages/pkg/temp_venv.py"
+echo "x = 1" > "$TMP/vendor/site-packages/pkg/temp_vendored.py"
+echo "x = 1" > "$TMP/temp_agent_probe.py"
+(cd "$TMP" && git init -q && git add -A && git -c user.email=test@x -c user.name=test commit -q -m "fixture" >/dev/null 2>&1)
+out=$(cd "$TMP" && bash "$SCRIPT" --check 2>&1)
+assert_contains "  仓库内真实 temp_*.py 仍被检出" "temp_agent_probe.py" "$out"
+assert_not_contains "  .venv 里 pip 的 temp_dir.py 不误报" "temp_dir.py" "$out"
+assert_not_contains "  venv/ 里的 temp_*.py 不误报" "temp_venv.py" "$out"
+assert_not_contains "  site-packages 里的 temp_*.py 不误报" "temp_vendored.py" "$out"
+
 # --- 汇总 ---
 echo ""
 echo "=================================================="
