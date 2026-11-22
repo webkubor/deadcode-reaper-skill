@@ -150,6 +150,28 @@ is_in_self_dir() {
   esac
 }
 
+# 工具：判断一个文件是否**已提交进版本历史**（2026-11-21 加：bury 不得删版本库里的文件）
+#
+# 为什么必须有：reaper 扫的是「看起来像垃圾」的文件名（.bak/.tmp/.update.lock…），
+# 而这些名字**可能正是仓库里正式提交的文件**。直接 rm -f 会把已提交的文件删掉，
+# 留下 ` D path` 的脏工作区 —— 用户没要求动它，reaper 却动了。
+#
+# 判据用 `git ls-tree HEAD`（**已提交**的文件）而不是 `git ls-files`（索引里的文件）：
+#   · 已提交的文件 → 保护，不删（删它等于改用户的版本库内容）；
+#   · 只是 staged、从未提交的文件 → 仍属垃圾，照删（那才是 reaper 的职责范围：
+#     SKILL.md 写的就是「污染 git status，容易误提交进仓库」——没提交过的才是垃圾，
+#     已提交的 .bak 是用户的正式内容，不该被悄悄删掉）。
+#
+# 不在 git 仓里、或 git 不可用时返回 1（= 不保护）⇒ 退回到旧行为，不会因为
+# 判据不可用就把该删的文件全留下来。
+is_git_tracked() {
+  local f="$1"
+  [ -n "$f" ] || return 1
+  git rev-parse --git-dir >/dev/null 2>&1 || return 1
+  git rev-parse --verify --quiet HEAD >/dev/null 2>&1 || return 1
+  git ls-tree -r --name-only HEAD -- "$f" 2>/dev/null | grep -q .
+}
+
 # 人性化容量格式化
 format_size() {
   local b="$1"
@@ -510,18 +532,68 @@ if [ "$ENABLE_SESSIONS" -eq 1 ]; then
     occupied_branches="$(git worktree list --porcelain 2>/dev/null | awk '/^branch /{print $2}')"
     protected_re='^(main|master|develop|trunk)$'
     current_branch="$(git branch --show-current 2>/dev/null)"
-    while IFS= read -r b; do
-      [ -z "$b" ] && continue
-      [ "$b" = "$current_branch" ] && continue
-      echo "$b" | grep -qE "$protected_re" && continue
-      echo "$occupied_branches" | grep -qxF "$b" && { branch_skip_targets+=("$b (被 worktree 占用，先清 worktree)"); continue; }
-      # 已并入判据：相对当前 HEAD（=主工作树检出）
-      if git merge-base --is-ancestor "$b" HEAD 2>/dev/null; then
-        branch_reap_targets+=("$b")
-      else
-        branch_skip_targets+=("$b (有未合并提交)")
-      fi
-    done < <(git branch --format='%(refname:short)' 2>/dev/null)
+    # 「已并入」的参照系 = **默认分支**，不是当前 HEAD。
+    #
+    # 2026-11-21 复核发现的误判：原判据是 `merge-base --is-ancestor "$b" HEAD`。
+    # HEAD 可能是**功能分支** —— 此时「只并入功能分支、没并入默认分支」的分支
+    # 会被判成已并入并删除，它那独有的未合并提交就此丢失（已实测复现：
+    # side-branch 被 reaper 删掉，独有提交没了）。
+    #
+    # 参照系选取（依次降级）：
+    #   ① origin/HEAD（远端默认分支，最权威）
+    #   ② origin/main / origin/master（远端默认分支的常见形态）
+    #   ③ 本地默认分支名 main/master/develop/trunk
+    #   ④ 兜底：HEAD 所在分支的**上游**（有上游时按上游比）
+    #   ⑤ 全部取不到 ⇒ **不删任何分支**（宁可漏删，不可误删）
+    default_ref=""
+    if git symbolic-ref --quiet --short refs/remotes/origin/HEAD >/dev/null 2>&1; then
+      default_ref="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null)"
+    fi
+    if [ -z "$default_ref" ]; then
+      for cand in origin/main origin/master; do
+        if git show-ref --verify --quiet "refs/remotes/$cand"; then
+          default_ref="$cand"
+          break
+        fi
+      done
+    fi
+    if [ -z "$default_ref" ]; then
+      for cand in main master develop trunk; do
+        if git show-ref --verify --quiet "refs/heads/$cand"; then
+          default_ref="$cand"
+          break
+        fi
+      done
+    fi
+    if [ -z "$default_ref" ] && [ -n "$current_branch" ]; then
+      # 兜底：有上游就按上游比（上游才是这条分支「最终要去的地方」）
+      default_ref="$(git rev-parse --abbrev-ref --symbolic-full-name "$current_branch@{upstream}" 2>/dev/null || true)"
+    fi
+    if [ -z "$default_ref" ]; then
+      # 判不出默认分支 ⇒ 本轮**一条分支都不删**。
+      # 不能退回 HEAD —— HEAD 可能在功能分支上，那正是本条判据要修的误判源。
+      while IFS= read -r b; do
+        [ -z "$b" ] && continue
+        [ "$b" = "$current_branch" ] && continue
+        branch_skip_targets+=("$b (判不出默认分支，本轮不删)")
+      done < <(git branch --format='%(refname:short)' 2>/dev/null)
+    else
+      while IFS= read -r b; do
+        [ -z "$b" ] && continue
+        [ "$b" = "$current_branch" ] && continue
+        echo "$b" | grep -qE "$protected_re" && continue
+        echo "$occupied_branches" | grep -qxF "$b" && { branch_skip_targets+=("$b (被 worktree 占用，先清 worktree)"); continue; }
+        # 已并入判据：相对**默认分支**（不是当前 HEAD —— HEAD 在功能分支上会误判）
+        if git merge-base --is-ancestor "$b" "$default_ref" 2>/dev/null; then
+          branch_reap_targets+=("$b")
+        else
+          # 文案要同时满足两个既有断言：T7 期望 "wip-unmerged (有未合并提交)"（括号闭合），
+          # T13 期望 "未并入默认分支"（四字连续）。中间用空格分隔、不加逗号，
+          # 两个 needle 才能都作为独立子串命中。
+          branch_skip_targets+=("$b (有未合并提交) 未并入默认分支 $default_ref")
+        fi
+      done < <(git branch --format='%(refname:short)' 2>/dev/null)
+    fi
     # 远端已并入分支（仅报告；--apply --remote 才删）
     if [ "$ENABLE_REMOTE" -eq 1 ]; then
       upstream="$(git rev-parse --verify origin/main >/dev/null 2>&1 && echo origin/main || echo '')"
@@ -551,7 +623,20 @@ if [ "$ENABLE_SESSIONS" -eq 1 ]; then
     [ -d "$tdir" ] || continue
     for cand in "$tdir/${proj}"-* "$tdir/${proj}_"*; do
       [ -e "$cand" ] || continue
-      mtime=$(stat -f %m "$cand" 2>/dev/null || stat -c %Y "$cand" 2>/dev/null) || continue
+      # mtime 取值：**GNU 优先**，BSD 兜底，且必须校验是纯数字。
+      #
+      # 2026-11-22 实测修的真 bug：原写法 `stat -f %m || stat -c %Y` 在 Linux 上
+      # 是错的 —— `stat -f`（BSD 文件系统格式）在 GNU coreutils 上**报错却 exit 0**，
+      # 输出是一堆 `File: "/tmp" / ID: ... / Type: ext2/ext3` 的垃圾，
+      # 于是 `|| stat -c %Y` 的兜底**永远不触发**，mtime 变量里塞的是这段垃圾，
+      # 后面 `[ "$mtime" -lt ... ]` 整数比较直接炸：
+      #   line 623: [: File: "/tmp/xxx-newrun": integer expression expected
+      # 连带把「不碰 1 小时内的新 /tmp 条目 / 已并入分支删除 / /tmp 遗留清除」
+      # 四个用例全打红（不是用例写错，是代码在 Linux 上取不到 mtime）。
+      mtime=$(stat -c %Y "$cand" 2>/dev/null) || mtime=$(stat -f %m "$cand" 2>/dev/null) || continue
+      case "$mtime" in
+        ''|*[!0-9]*) continue ;;   # 取不到 / 不是数字 ⇒ 当作不可判定，跳过（宁漏不误删）
+      esac
       [ "$mtime" -lt "$stale_epoch" ] || continue
       [ "$mtime" -gt "$recent_cutoff" ] && continue
       # 活跃进程占用保护（并行会话可能正在用）
@@ -566,7 +651,11 @@ if [ "$ENABLE_SESSIONS" -eq 1 ]; then
   if [ "${#tmp_reap_targets[@]}" -gt 0 ]; then
     deduped="$(printf '%s\n' "${tmp_reap_targets[@]}" | while IFS= read -r q; do
       [ -e "$q" ] || continue
-      key="$(stat -f '%d:%i' "$q" 2>/dev/null || stat -c '%d:%i' "$q" 2>/dev/null)" || continue
+      # 同上：GNU 优先、BSD 兜底，并校验输出是纯数字（BSD 的 %d:%i 在 GNU 上会吐垃圾）
+      key="$(stat -c '%d:%i' "$q" 2>/dev/null)" || key="$(stat -f '%d:%i' "$q" 2>/dev/null)" || continue
+      case "$key" in
+        ''|*[!0-9:]*) continue ;;
+      esac
       echo "$key $q"
     done | sort -n -k1.1 | awk '!seen[$1]++ { $1=""; sub(/^ /,""); print }')"
     tmp_reap_targets=()
@@ -723,16 +812,28 @@ if [ "$SHARE_MODE" -eq 0 ]; then
 fi
 
 for f in "${ai_artifacts[@]}"; do
+  if is_git_tracked "$f"; then
+    [ "$SHARE_MODE" -eq 0 ] && echo "  🤖 跳过（被 git 跟踪，不动版本库内容）: $f"
+    continue
+  fi
   rm -f "$f"
   [ "$SHARE_MODE" -eq 0 ] && echo "  🤖 已粉碎 AI 幽灵碎片: $f"
 done
 
 for f in "${garbage_files[@]}"; do
+  if is_git_tracked "$f"; then
+    [ "$SHARE_MODE" -eq 0 ] && echo "  🗑️ 跳过（被 git 跟踪，不动版本库内容）: $f"
+    continue
+  fi
   rm -f "$f"
   [ "$SHARE_MODE" -eq 0 ] && echo "  🗑️ 已删除临时文件: $f"
 done
 
 for f in "${empty_drafts[@]}"; do
+  if is_git_tracked "$f"; then
+    [ "$SHARE_MODE" -eq 0 ] && echo "  📄 跳过（被 git 跟踪，不动版本库内容）: $f"
+    continue
+  fi
   rm -f "$f"
   [ "$SHARE_MODE" -eq 0 ] && echo "  📄 已移除草稿碎片: $f"
 done
@@ -751,6 +852,12 @@ for f in "${tombstones[@]}"; do
   if git rev-parse --git-dir >/dev/null 2>&1; then
     if ! git mv "$dir" "$target" 2>/dev/null; then
       mv "$dir" "$target"
+    else
+      # git mv 会把改名**留在暂存区** ⇒ 用户的下一次 git commit 会把这次归档
+      # 一起提交进去（reaper 预占了用户的提交），或者用户被一个来路不明的
+      # staged 变更吓到。归档是 reaper 的动作，不该动 index。
+      # 撤销暂存（git reset -- <paths>）但保留工作区里的实际归档结果。
+      git reset -q -- "$dir" "$target" 2>/dev/null || true
     fi
   else
     mv "$dir" "$target"

@@ -91,7 +91,26 @@ prepare_fixture() {
   echo "agent test" > "$TMP/scripts/temp_agent_test.scratch.py"
   mkdir -p "$TMP/__pycache__" && echo "bytecode" > "$TMP/__pycache__/cache.pyc"
   # 在临时 fixture 里初始化 git（让 archive 用 git mv 也能跑）
+  #
+  # 2026-11-22 修正：把「垃圾文件」与「已提交内容」分开口径。
+  #
+  # 原实现 `git add -A` 把 .bak/.update.lock/.tmp/.rej/.scratch.py 和空草稿
+  # **一起提交进了仓库** —— 但真实场景里这些是**未跟踪残留**（SKILL.md 说它们
+  # 的危害正是「污染 git status，容易误提交进仓库」）。fixture 提交了它们，
+  # 于是「已提交的文件算不算用户正式内容」这个问题被测试自己造了出来。
+  #
+  # 现在：先 commit fixture 里的**真实内容**（SKILL.md / 真文档），
+  # 再把垃圾与草稿从索引里移出、留在工作区未跟踪 ⇒ 与真实场景一致，
+  # 且「bury 不删 git 跟踪的文件」这条新规则有独立用例（T11）覆盖。
   (cd "$TMP" && git init -q && git add -A && git -c user.email=test@x -c user.name=test commit -q -m "fixture" >/dev/null 2>&1) || true
+  # 把垃圾与草稿移出索引（保留在工作区、未跟踪）
+  (cd "$TMP" && git rm -q --cached --ignore-unmatch \
+      scripts/leftover.bak scripts/old.build.update.lock scripts/dump.tmp \
+      scripts/merge-failed.rej scripts/temp_agent_test.scratch.py \
+      scripts/draft.md scripts/empty-no-frontmatter.md \
+      __pycache__/cache.pyc >/dev/null 2>&1) || true
+  # 移出索引后要提交一次，否则这些路径仍是「已删除待提交」状态
+  (cd "$TMP" && git -c user.email=test@x -c user.name=test commit -q -m "untrack junk" >/dev/null 2>&1) || true
 }
 
 echo ""
@@ -184,7 +203,7 @@ echo ""
 echo "T7 · --sessions 会话过程资产收割"
 rm -rf "$TMP"
 mkdir -p "$TMP"
-(cd "$TMP" && git init -q && git -c user.email=test@x -c user.name=test commit -q --allow-empty -m "root" >/dev/null 2>&1)
+(cd "$TMP" && git init -q && git config user.email test@x && git config user.name test && git add -A && git -c user.email=test@x -c user.name=test commit -q --allow-empty -m "root" >/dev/null 2>&1)
 # 默认分支名兼容（老 git 是 master，新 git 可能 main）
 default_branch="$(cd "$TMP" && git branch --show-current)"
 (cd "$TMP" && git branch merged-done && git branch wip-unmerged)
@@ -303,6 +322,92 @@ assert_contains "  仓库内真实 temp_*.py 仍被检出" "temp_agent_probe.py"
 assert_not_contains "  .venv 里 pip 的 temp_dir.py 不误报" "temp_dir.py" "$out"
 assert_not_contains "  venv/ 里的 temp_*.py 不误报" "temp_venv.py" "$out"
 assert_not_contains "  site-packages 里的 temp_*.py 不误报" "temp_vendored.py" "$out"
+
+# --- T11: bury 模式不得删除 git 跟踪的文件（2026-11-21 复核：rm -f 前无跟踪检查） ---
+#
+# 教训来源：三个 rm 循环（ai_artifacts / garbage_files / empty_drafts）直接
+# `rm -f "$f"`，不查该文件是否被 git 跟踪 ⇒ 仓里**已提交**的 .bak/.update.lock
+# 之类的文件会被直接删掉，留下 ` D path` 的脏工作区（内容可从 git 恢复，
+# 但用户的工作区被动了，而且如果没提交过就真丢了）。
+echo ""
+echo "T11 · bury 模式不删 git 跟踪的文件"
+rm -rf "$TMP"
+mkdir -p "$TMP/scripts"
+(cd "$TMP" && git init -q && git config user.email test@x && git config user.name test)
+echo "tracked content" > "$TMP/scripts/old.build.update.lock"
+echo "tracked content" > "$TMP/scripts/keep.txt"
+(cd "$TMP" && git add -A && git -c user.email=test@x -c user.name=test commit -q -m "tracked" >/dev/null 2>&1)
+(cd "$TMP" && bash "$SCRIPT" --apply >/dev/null 2>&1)
+if [ -e "$TMP/scripts/old.build.update.lock" ]; then
+  echo "  ✓ git 跟踪的垃圾文件未被删除"; PASS=$((PASS+1))
+else
+  echo "  ✗ git 跟踪的垃圾文件被删除（工作区被破坏）"; FAIL=$((FAIL+1)); FAILED_TESTS+=("跟踪文件保护")
+fi
+if (cd "$TMP" && git status --porcelain | grep -q .); then
+  echo "  ✗ bury 后工作区变脏（$(cd "$TMP" && git status --porcelain | tr '\n' '|')）"
+  FAIL=$((FAIL+1)); FAILED_TESTS+=("跟踪文件保护后工作区干净")
+else
+  echo "  ✓ bury 后工作区保持干净"; PASS=$((PASS+1))
+fi
+
+# --- T12: bury 归档后不留暂存区改动（git mv 会把改名留在 index 里） ---
+#
+# 教训来源：墓碑归档走 `git mv`，成功后改名留在**暂存区** ⇒ 用户的下一次
+# `git commit` 会把这次归档一起提交进去（污染），或者 `git commit -a` 之外
+# 的操作让人困惑。归档是 reaper 的动作，不该预占用户的提交。
+echo ""
+echo "T12 · bury 归档后不污染暂存区"
+rm -rf "$TMP"
+mkdir -p "$TMP/skills/deprecated-auth"
+(cd "$TMP" && git init -q && git config user.email test@x && git config user.name test)
+printf -- "---\nname: deprecated-auth\nstatus: deprecated\n---\n\n旧技能\n" > "$TMP/skills/deprecated-auth/SKILL.md"
+(cd "$TMP" && git add -A && git -c user.email=test@x -c user.name=test commit -q -m "tombstone" >/dev/null 2>&1)
+(cd "$TMP" && bash "$SCRIPT" --bury >/dev/null 2>&1)
+staged="$(cd "$TMP" && git diff --cached --name-only 2>/dev/null)"
+if [ -z "$staged" ]; then
+  echo "  ✓ 归档后暂存区干净"; PASS=$((PASS+1))
+else
+  echo "  ✗ 归档后暂存区有残留：$(echo "$staged" | tr '\n' '|')"
+  FAIL=$((FAIL+1)); FAILED_TESTS+=("归档不留暂存")
+fi
+if (cd "$TMP" && git status --porcelain | grep -q .); then
+  echo "  ✓ 归档以工作区改动呈现（未占用暂存区）"; PASS=$((PASS+1))
+else
+  echo "  ✗ 归档后工作区无任何痕迹（归档没生效？）"; FAIL=$((FAIL+1)); FAILED_TESTS+=("归档生效")
+fi
+
+# --- T13: 已并入判据比默认分支，不比当前 HEAD（HEAD 在功能分支上时会误判） ---
+#
+# 教训来源：分支收割用 `git merge-base --is-ancestor "$b" HEAD`，
+# HEAD 可能是**功能分支**。此时「只并入功能分支、没并入默认分支」的分支
+# 会被判成已并入并删除 —— 它的独有提交就丢了。
+# 正确判据：比默认分支（main/master/develop/trunk，或 origin/ 默认分支）。
+echo ""
+echo "T13 · 已并入判据比默认分支而非当前 HEAD"
+rm -rf "$TMP"
+mkdir -p "$TMP"
+(cd "$TMP" && git init -q && git config user.email test@x && git config user.name test)
+(cd "$TMP" && git commit -q --allow-empty -m "root" >/dev/null 2>&1)
+DEF_BRANCH="$(cd "$TMP" && git branch --show-current)"
+# 造一个分支：独有提交，只并入功能分支，**没有**并入默认分支
+(cd "$TMP" && git checkout -q -b feature-x && git commit -q --allow-empty -m "feature work" >/dev/null 2>&1)
+(cd "$TMP" && git checkout -q "$DEF_BRANCH" && git checkout -q -b side-unmerged && git commit -q --allow-empty -m "UNIQUE only on side" >/dev/null 2>&1)
+(cd "$TMP" && git checkout -q feature-x && git merge -q --no-ff side-unmerged -m "merge side into feature" >/dev/null 2>&1)
+(cd "$TMP" && git checkout -q feature-x)   # HEAD 停在功能分支上
+out=$(cd "$TMP" && bash "$SCRIPT" --check --sessions 2>&1)
+assert_contains "  检出未并入默认分支的 side-unmerged" "side-unmerged" "$out"
+assert_contains "  说明它未并入默认分支" "未并入默认分支" "$out"
+(cd "$TMP" && bash "$SCRIPT" --apply --sessions >/dev/null 2>&1)
+if (cd "$TMP" && git branch | grep -q "side-unmerged"); then
+  echo "  ✓ 未并入默认分支的分支被保留"; PASS=$((PASS+1))
+else
+  echo "  ✗ 未并入默认分支的分支被误删（独有提交丢失）"; FAIL=$((FAIL+1)); FAILED_TESTS+=("已并入判据比默认分支")
+fi
+if (cd "$TMP" && git branch | grep -q "feature-x"); then
+  echo "  ✓ 当前分支未被收割"; PASS=$((PASS+1))
+else
+  echo "  ✗ 当前分支被误删"; FAIL=$((FAIL+1)); FAILED_TESTS+=("当前分支保护")
+fi
 
 # --- 汇总 ---
 echo ""
